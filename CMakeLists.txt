@@ -8,8 +8,9 @@ include(libigl)
 
 igl_include(glfw)
 igl_include(imgui)
+igl_include(embree)
 
 # Add your project files
 file(GLOB SRC_FILES *.cpp)
 add_executable(${PROJECT_NAME} ${SRC_FILES})
-target_link_libraries(${PROJECT_NAME} PUBLIC igl::glfw igl::imgui)
+target_link_libraries(${PROJECT_NAME} PUBLIC igl::glfw igl::imgui igl::embree)
