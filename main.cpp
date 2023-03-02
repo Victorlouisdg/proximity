@@ -12,39 +12,35 @@ int main(int argc, char *argv[]) {
   Eigen::MatrixXi F;
   igl::read_triangle_mesh(argc > 1 ? argv[1] : "../screwdriver.off", V, F);
 
-  // V.array().col(2) += 0.025;
-
-  // Make new mesh with triangle that we know intersects the ray
-  // Eigen::MatrixXd V(3, 3);
-  // Eigen::MatrixXi F(1, 3);
-  // V << 0, -0.01, -0.01, 0, 0, 0.01, 0, 0.01, 0;
-  // F << 0, 1, 2;
-
   // Set up viewer
   igl::opengl::glfw::Viewer vr;
   vr.data().set_mesh(V, F);
 
   // Add two points to the viewer
   Eigen::MatrixXd P(2, 3);
-  double distance_between_points = 0.05;
-  double d2 = distance_between_points / 2.0;
-  P << -d2, 0, 0, d2, 0, 0;
 
   // Define red and green color
   Eigen::RowVector3d red(1, 0, 0);
   Eigen::RowVector3d green(0, 1, 0);
 
-  igl::Hit hit;
-  Eigen::RowVector3d start = P.row(0);
-  Eigen::RowVector3d dir = P.row(1) - P.row(0);
-  igl::embree::EmbreeIntersector ei;
-  ei.init(V.cast<float>(), F.cast<int>());
-  bool hit_success = ei.intersectRay(start.cast<float>(), dir.cast<float>(), hit);
-  std::cout << "embree hit success: " << hit_success << std::endl;
+  // Make a grid in the YZ plane
+  int rows = 3;
+  int cols = 4;
+  double spacing = 0.01;
+  // Eigen::RowVector3d grid_center = Eigen::RowVector3d(0, rows * spacing / 2.0, cols * spacing / 2.0);
+  Eigen::MatrixXd gridPoints = Eigen::MatrixXd::Zero(rows * cols, 3);
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < cols; j++) {
+      Eigen::RowVector3d point(0, i * spacing, j * spacing);
+      int index = i * cols + j;
+      gridPoints.row(index) = point;  // - grid_center;
+    }
+  }
 
-  Eigen::RowVector3d color = hit_success ? green : red;
-  vr.data().add_points(P, color);
-  vr.data().add_edges(P.row(0), P.row(1), color);
+  double distance_between_points = 0.05;
+  double d2 = distance_between_points / 2.0;
+  Eigen::MatrixXd sensorStarts = gridPoints.rowwise() + Eigen::RowVector3d(-d2, 0, 0);
+  Eigen::MatrixXd sensorEnds = gridPoints.rowwise() + Eigen::RowVector3d(d2, 0, 0);
 
   igl::opengl::glfw::imgui::ImGuiPlugin imgui_plugin;
   vr.plugins.push_back(&imgui_plugin);
@@ -71,20 +67,24 @@ int main(int argc, char *argv[]) {
     vr.data().clear_points();
     vr.data().clear_edges();
 
-    igl::Hit hit;
-    Eigen::RowVector3d start = P.row(0);
-    Eigen::RowVector3d dir = P.row(1) - P.row(0);
-    igl::embree::EmbreeIntersector ei;
-    ei.init(V_transformed.cast<float>(), F.cast<int>());
-    bool hit_success = ei.intersectRay(start.cast<float>(), dir.cast<float>(), hit);
-    std::cout << "embree hit success: " << hit_success << std::endl;
-    // print hit info
-    std::cout << "hit id: " << hit.id << std::endl;
-    std::cout << "hit t: " << hit.t << std::endl;
+    for (int i = 0; i < sensorStarts.rows(); i++) {
+      Eigen::RowVector3d start = sensorStarts.row(i);
+      Eigen::RowVector3d end = sensorEnds.row(i);
+      Eigen::RowVector3d dir = end - start;
+      igl::Hit hit;
+      igl::embree::EmbreeIntersector ei;
+      ei.init(V_transformed.cast<float>(), F.cast<int>());
+      bool hit_success = ei.intersectRay(start.cast<float>(), dir.cast<float>(), hit);
+      std::cout << "embree hit success: " << hit_success << std::endl;
+      // print hit info
+      std::cout << "hit id: " << hit.id << std::endl;
+      std::cout << "hit t: " << hit.t << std::endl;
 
-    Eigen::RowVector3d color = hit_success ? green : red;
-    vr.data().add_points(P, color);
-    vr.data().add_edges(P.row(0), P.row(1), color);
+      Eigen::RowVector3d color = hit_success && hit.t <= 1.0 ? red : green;
+      vr.data().add_points(start, color);
+      vr.data().add_points(end, color);
+      vr.data().add_edges(start, end, color);
+    }
   };
   // Blender-style keyboard shortcuts for operation
   vr.callback_key_pressed = [&](decltype(vr) &, unsigned int key, int mod) {
